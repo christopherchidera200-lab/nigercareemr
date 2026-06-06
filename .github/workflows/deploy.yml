@@ -1,0 +1,287 @@
+###############################################################################
+# NigerCare EMR – GitHub Actions CI/CD Pipeline
+# Triggers: push/PR to main
+# Jobs: lint → test → terraform-plan → terraform-apply → deploy-frontend
+###############################################################################
+name: NigerCare EMR – Deploy Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TF_VERSION:      "1.7.0"
+  PYTHON_VERSION:  "3.12"
+  NODE_VERSION:    "20"
+  AWS_REGION:      "us-east-1"
+  TF_DIR:          "terraform/environments/dev"
+
+permissions:
+  id-token:    write   # OIDC
+  contents:    read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 1: Python lint + unit tests
+  # ─────────────────────────────────────────────────────────────────────────
+  backend-test:
+    name: "Backend – Lint & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov flake8 boto3 moto[all]
+
+      - name: Lint with flake8
+        run: |
+          flake8 backend/ \
+            --max-line-length=120 \
+            --exclude=backend/tests/__pycache__ \
+            --ignore=E501,W503
+
+      - name: Run unit tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v \
+            --tb=short \
+            --cov=lambdas \
+            --cov-report=term-missing \
+            --cov-fail-under=60
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 2: Frontend build
+  # ─────────────────────────────────────────────────────────────────────────
+  frontend-build:
+    name: "Frontend – Build"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_URL:              ${{ secrets.VITE_API_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID:    ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          VITE_AWS_REGION:           ${{ env.AWS_REGION }}
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 3: Terraform plan (PR only)
+  # ─────────────────────────────────────────────────────────────────────────
+  terraform-plan:
+    name: "Terraform – Plan"
+    runs-on: ubuntu-latest
+    needs: [backend-test]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -no-color -out=tfplan 2>&1 | tee plan_output.txt
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.TF_DIR }}/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n... [truncated]' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              body:         `## Terraform Plan\n\`\`\`hcl\n${truncated}\n\`\`\``
+            });
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 4: Terraform apply (main branch only)
+  # ─────────────────────────────────────────────────────────────────────────
+  terraform-apply:
+    name: "Terraform – Apply"
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: dev
+
+    outputs:
+      api_url:              ${{ steps.outputs.outputs.api_url }}
+      frontend_bucket:      ${{ steps.outputs.outputs.frontend_bucket }}
+      cloudfront_dist_id:   ${{ steps.outputs.outputs.cloudfront_dist_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version:    ${{ env.TF_VERSION }}
+          terraform_wrapper:    false
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Capture outputs
+        id: outputs
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "api_url=$(terraform output -raw api_gateway_url)"                  >> $GITHUB_OUTPUT
+          echo "frontend_bucket=$(terraform output -raw s3_bucket_name)"           >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 5: Deploy frontend to S3 + CloudFront invalidation
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: "Deploy – Frontend"
+    runs-on: ubuntu-latest
+    needs: [terraform-apply, frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync frontend/dist/ \
+            s3://${{ needs.terraform-apply.outputs.frontend_bucket }}/ \
+            --delete \
+            --cache-control "max-age=86400" \
+            --exclude "index.html"
+
+          # index.html: no cache (always fresh)
+          aws s3 cp frontend/dist/index.html \
+            s3://${{ needs.terraform-apply.outputs.frontend_bucket }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          DIST_ID=$(aws cloudformation describe-stacks \
+            --query "Stacks[].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          if [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation \
+              --distribution-id "$DIST_ID" \
+              --paths "/*"
+          else
+            echo "No CloudFront distribution ID found, skipping invalidation"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 6: Smoke test
+  # ─────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: "Smoke Test – API Health"
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Wait for deploy to stabilise
+        run: sleep 15
+
+      - name: Health check – API Gateway
+        run: |
+          API_URL="${{ needs.terraform-apply.outputs.api_url }}"
+          if [ -z "$API_URL" ]; then
+            echo "WARNING: API URL not available, skipping smoke test"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${API_URL}/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"smoke@test.invalid","password":"BadPass"}' \
+            --max-time 10 || echo "000")
+          echo "API responded with HTTP $STATUS"
+          # 400 = missing fields handled, 401 = auth working, both are valid
+          if [[ "$STATUS" =~ ^(400|401|403)$ ]]; then
+            echo "✅ API is responding correctly"
+          else
+            echo "⚠️ Unexpected status $STATUS – investigating"
+            exit 1
+          fi

@@ -1,0 +1,39 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform.lock.hcl
+terraform/modules/lambda/builds/*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+htmlcov/
+.coverage
+dist/
+*.egg-info/
+venv/
+.env
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# AWS
+.aws/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets – never commit these
+*.pem
+*.key
+secrets.tfvars
