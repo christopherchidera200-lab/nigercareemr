@@ -199,9 +199,17 @@ resource "aws_api_gateway_stage" "dev" {
   rest_api_id   = aws_api_gateway_rest_api.emr.id
   stage_name    = var.environment
 
-  # Access logging (free log group, minimal cost)
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.path"
+      status         = "$context.status"
+      responseLength = "$context.responseLength"
+      requestTime    = "$context.requestTime"
+    })
   }
 
   xray_tracing_enabled = false # Disable X-Ray to avoid charges
