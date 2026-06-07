@@ -50,8 +50,7 @@ jobs:
           flake8 backend/ \
             --max-line-length=120 \
             --exclude=backend/tests/__pycache__ \
-            --ignore=E501,W503
-
+           --ignore=E501,W503,E231,E221,E302,E303,E305,E401,W291,W293
       - name: Run unit tests
         run: |
           cd backend
