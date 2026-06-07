@@ -13,7 +13,6 @@ import uuid
 import boto3
 import logging
 from datetime import datetime, timezone
-from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -21,22 +20,25 @@ logger.setLevel(logging.INFO)
 _table = None
 _audit_tbl = None
 
+
 def _get_table():
     global _table
     if _table is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _table = db.Table(os.environ["PATIENTS_TABLE"])
     return _table
+
 
 def _get_audit():
     global _audit_tbl
     if _audit_tbl is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _audit_tbl = db.Table(os.environ["AUDIT_LOGS_TABLE"])
     return _audit_tbl
 
+
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Content-Type": "application/json",
@@ -55,11 +57,11 @@ def _get_claims(event: dict) -> dict:
 def _log_audit(user_id: str, action: str, resource_id: str):
     try:
         _get_audit().put_item(Item={
-            "log_id":    str(uuid.uuid4()),
+            "log_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id":   user_id,
-            "action":    action,
-            "resource":  resource_id,
+            "user_id": user_id,
+            "action": action,
+            "resource": resource_id,
             "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
         })
     except Exception as e:
@@ -93,30 +95,30 @@ def list_patients(event, claims):
 
 def create_patient(event, claims, body):
     required = ["firstName", "lastName", "dateOfBirth", "gender", "phone"]
-    missing  = [f for f in required if not body.get(f)]
+    missing = [f for f in required if not body.get(f)]
     if missing:
         return _resp(400, {"error": f"Missing required fields: {', '.join(missing)}"})
 
     patient_id = str(uuid.uuid4())
-    now        = datetime.now(timezone.utc).isoformat()
-    caller     = claims.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+    caller = claims.get("email", "unknown")
 
     item = {
-        "patient_id":   patient_id,
-        "record_type":  "PROFILE",
-        "firstName":    body["firstName"].strip(),
-        "lastName":     body["lastName"].strip(),
-        "dateOfBirth":  body["dateOfBirth"],
-        "gender":       body["gender"],
-        "phone":        body["phone"].strip(),
-        "email":        body.get("email", "").strip().lower(),
-        "address":      body.get("address", ""),
-        "bloodGroup":   body.get("bloodGroup", ""),
-        "allergies":    body.get("allergies", []),
-        "status":       "ACTIVE",
-        "created_by":   caller,
-        "created_at":   now,
-        "updated_at":   now,
+        "patient_id": patient_id,
+        "record_type": "PROFILE",
+        "firstName": body["firstName"].strip(),
+        "lastName": body["lastName"].strip(),
+        "dateOfBirth": body["dateOfBirth"],
+        "gender": body["gender"],
+        "phone": body["phone"].strip(),
+        "email": body.get("email", "").strip().lower(),
+        "address": body.get("address", ""),
+        "bloodGroup": body.get("bloodGroup", ""),
+        "allergies": body.get("allergies", []),
+        "status": "ACTIVE",
+        "created_by": caller,
+        "created_at": now,
+        "updated_at": now,
     }
 
     try:
@@ -140,7 +142,7 @@ def get_patient(event, claims, patient_id):
 
     try:
         result = _get_table().get_item(Key={"patient_id": patient_id, "record_type": "PROFILE"})
-        item   = result.get("Item")
+        item = result.get("Item")
         if not item:
             return _resp(404, {"error": "Patient not found"})
         _log_audit(caller, "VIEW_PATIENT", patient_id)
@@ -155,16 +157,16 @@ def update_patient(event, claims, patient_id, body):
         return _resp(403, {"error": "Insufficient permissions"})
 
     updatable = ["firstName", "lastName", "phone", "email", "address", "bloodGroup", "allergies", "status"]
-    updates   = {k: v for k, v in body.items() if k in updatable}
+    updates = {k: v for k, v in body.items() if k in updatable}
 
     if not updates:
         return _resp(400, {"error": "No valid fields to update"})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    expr       = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+    expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
     attr_names = {f"#{k}": k for k in updates}
-    attr_vals  = {f":{k}": v for k, v in updates.items()}
+    attr_vals = {f":{k}": v for k, v in updates.items()}
 
     try:
         _get_table().update_item(
@@ -193,7 +195,7 @@ def delete_patient(event, claims, patient_id):
             UpdateExpression="SET #status = :s, updated_at = :ua",
             ExpressionAttributeNames={"#status": "status"},
             ExpressionAttributeValues={
-                ":s":  "DEACTIVATED",
+                ":s": "DEACTIVATED",
                 ":ua": datetime.now(timezone.utc).isoformat(),
             },
             ConditionExpression="attribute_exists(patient_id)",
@@ -215,8 +217,8 @@ def lambda_handler(event, context):
 
     claims = _get_claims(event)
     method = event.get("httpMethod", "")
-    path   = event.get("path", "")
-    parts  = path.strip("/").split("/")
+    path = event.get("path", "")
+    parts = path.strip("/").split("/")
     # parts[0] = "patients", parts[1] = optional patient_id
 
     try:

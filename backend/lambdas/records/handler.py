@@ -20,22 +20,25 @@ logger.setLevel(logging.INFO)
 _table = None
 _audit_tbl = None
 
+
 def _get_table():
     global _table
     if _table is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _table = db.Table(os.environ["MEDICAL_RECORDS_TABLE"])
     return _table
+
 
 def _get_audit():
     global _audit_tbl
     if _audit_tbl is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _audit_tbl = db.Table(os.environ["AUDIT_LOGS_TABLE"])
     return _audit_tbl
 
+
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT",
     "Content-Type": "application/json",
@@ -46,19 +49,22 @@ VALID_TYPES = {"DIAGNOSIS", "LAB_RESULT", "PRESCRIPTION", "NOTE", "IMAGING", "PR
 def _resp(status, body):
     return {"statusCode": status, "headers": CORS_HEADERS, "body": json.dumps(body, default=str)}
 
+
 def _claims(event):
     return event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+
 
 def _groups(claims):
     g = claims.get("cognito:groups", "")
     return [g] if isinstance(g, str) else (g or [])
 
+
 def _audit(uid, action, rid):
     try:
         _get_audit().put_item(Item={
-            "log_id":    str(uuid.uuid4()),
+            "log_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id":   uid, "action": action, "resource": rid,
+            "user_id": uid, "action": action, "resource": rid,
             "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
         })
     except Exception as e:
@@ -66,9 +72,9 @@ def _audit(uid, action, rid):
 
 
 def list_records(event, claims):
-    params     = event.get("queryStringParameters") or {}
+    params = event.get("queryStringParameters") or {}
     patient_id = params.get("patient_id")
-    groups     = _groups(claims)
+    groups = _groups(claims)
 
     if not patient_id:
         return _resp(400, {"error": "patient_id query parameter required"})
@@ -96,31 +102,31 @@ def create_record(event, claims, body):
         return _resp(403, {"error": "Only doctors can create medical records"})
 
     required = ["patient_id", "record_type", "title", "content"]
-    missing  = [f for f in required if not body.get(f)]
+    missing = [f for f in required if not body.get(f)]
     if missing:
         return _resp(400, {"error": f"Missing: {', '.join(missing)}"})
 
     if body["record_type"] not in VALID_TYPES:
         return _resp(400, {"error": f"Invalid record_type. Valid: {', '.join(VALID_TYPES)}"})
 
-    now       = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     record_id = f"{now}#{str(uuid.uuid4())[:8]}"  # time-sorted SK
-    caller    = claims.get("email", "unknown")
+    caller = claims.get("email", "unknown")
 
     item = {
-        "patient_id":       body["patient_id"],
-        "record_id":        record_id,
-        "record_type":      body["record_type"],
-        "doctor_id":        claims.get("sub", "unknown"),
-        "doctor_name":      claims.get("name", "Unknown Doctor"),
-        "title":            body["title"].strip(),
-        "content":          body["content"],
-        "attachments":      body.get("attachments", []),
-        "appointment_id":   body.get("appointment_id", ""),
-        "is_confidential":  body.get("is_confidential", False),
-        "created_at":       now,
-        "updated_at":       now,
-        "created_by":       caller,
+        "patient_id": body["patient_id"],
+        "record_id": record_id,
+        "record_type": body["record_type"],
+        "doctor_id": claims.get("sub", "unknown"),
+        "doctor_name": claims.get("name", "Unknown Doctor"),
+        "title": body["title"].strip(),
+        "content": body["content"],
+        "attachments": body.get("attachments", []),
+        "appointment_id": body.get("appointment_id", ""),
+        "is_confidential": body.get("is_confidential", False),
+        "created_at": now,
+        "updated_at": now,
+        "created_by": caller,
     }
 
     try:
@@ -133,7 +139,7 @@ def create_record(event, claims, body):
 
 
 def get_record(event, claims, record_id):
-    params     = event.get("queryStringParameters") or {}
+    params = event.get("queryStringParameters") or {}
     patient_id = params.get("patient_id")
     if not patient_id:
         return _resp(400, {"error": "patient_id query parameter required"})
@@ -144,7 +150,7 @@ def get_record(event, claims, record_id):
 
     try:
         result = _get_table().get_item(Key={"patient_id": patient_id, "record_id": record_id})
-        item   = result.get("Item")
+        item = result.get("Item")
         if not item:
             return _resp(404, {"error": "Record not found"})
         if item.get("is_confidential") and "Patients" in groups:
@@ -166,12 +172,12 @@ def update_record(event, claims, record_id, body):
         return _resp(400, {"error": "patient_id required in body"})
 
     updatable = ["title", "content", "attachments", "is_confidential"]
-    updates   = {k: v for k, v in body.items() if k in updatable}
+    updates = {k: v for k, v in body.items() if k in updatable}
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    expr       = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+    expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
     attr_names = {f"#{k}": k for k in updates}
-    attr_vals  = {f":{k}": v for k, v in updates.items()}
+    attr_vals = {f":{k}": v for k, v in updates.items()}
 
     try:
         _get_table().update_item(
@@ -196,9 +202,9 @@ def lambda_handler(event, context):
 
     claims = _claims(event)
     method = event.get("httpMethod", "")
-    path   = event.get("path", "")
-    parts  = path.strip("/").split("/")
-    rid    = parts[1] if len(parts) > 1 else None
+    path = event.get("path", "")
+    parts = path.strip("/").split("/")
+    rid = parts[1] if len(parts) > 1 else None
 
     try:
         body = json.loads(event.get("body") or "{}")

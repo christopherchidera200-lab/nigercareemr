@@ -16,25 +16,29 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 _table = None
-_sns   = None
+_sns = None
+
 
 def _get_table():
     global _table
     if _table is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _table = db.Table(os.environ["NOTIFICATIONS_TABLE"])
     return _table
+
 
 def _get_sns():
     global _sns
     if _sns is None:
-        _sns = boto3.client("sns", region_name=os.environ.get("REGION","us-east-1"))
+        _sns = boto3.client("sns", region_name=os.environ.get("REGION", "us-east-1"))
     return _sns
+
 
 def _get_sns_topic(): return os.environ.get("_get_sns_topic()", "")
 
+
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT",
     "Content-Type": "application/json",
@@ -44,8 +48,10 @@ CORS_HEADERS = {
 def _resp(status, body):
     return {"statusCode": status, "headers": CORS_HEADERS, "body": json.dumps(body, default=str)}
 
+
 def _claims(event):
     return event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+
 
 def _groups(claims):
     g = claims.get("cognito:groups", "")
@@ -77,7 +83,7 @@ def send_notification(event, claims, body):
         return _resp(403, {"error": "Insufficient permissions"})
 
     required = ["recipient_id", "title", "message", "type"]
-    missing  = [f for f in required if not body.get(f)]
+    missing = [f for f in required if not body.get(f)]
     if missing:
         return _resp(400, {"error": f"Missing: {', '.join(missing)}"})
 
@@ -85,20 +91,20 @@ def send_notification(event, claims, body):
     if body["type"] not in valid_types:
         return _resp(400, {"error": f"Invalid type. Valid: {', '.join(valid_types)}"})
 
-    notif_id   = str(uuid.uuid4())
-    now        = datetime.now(timezone.utc).isoformat()
+    notif_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
     expires_at = int(datetime.now(timezone.utc).timestamp()) + 2592000  # 30 days
 
     item = {
         "notification_id": notif_id,
-        "created_at":      now,
-        "recipient_id":    body["recipient_id"],
-        "title":           body["title"].strip(),
-        "message":         body["message"].strip(),
-        "type":            body["type"],
-        "is_read":         False,
-        "sent_by":         claims.get("email", "system"),
-        "expires_at":      expires_at,
+        "created_at": now,
+        "recipient_id": body["recipient_id"],
+        "title": body["title"].strip(),
+        "message": body["message"].strip(),
+        "type": body["type"],
+        "is_read": False,
+        "sent_by": claims.get("email", "system"),
+        "expires_at": expires_at,
     }
 
     try:
@@ -140,7 +146,7 @@ def mark_read(event, claims, notif_id):
             Key={"notification_id": notif_id, "created_at": item["created_at"]},
             UpdateExpression="SET is_read = :r, read_at = :ra",
             ExpressionAttributeValues={
-                ":r":  True,
+                ":r": True,
                 ":ra": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -156,8 +162,8 @@ def lambda_handler(event, context):
 
     claims = _claims(event)
     method = event.get("httpMethod", "")
-    path   = event.get("path", "")
-    parts  = path.strip("/").split("/")
+    path = event.get("path", "")
+    parts = path.strip("/").split("/")
 
     sub1 = parts[1] if len(parts) > 1 else ""
     sub2 = parts[2] if len(parts) > 2 else ""

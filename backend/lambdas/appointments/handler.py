@@ -21,22 +21,25 @@ logger.setLevel(logging.INFO)
 _table = None
 _audit_tbl = None
 
+
 def _get_table():
     global _table
     if _table is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _table = db.Table(os.environ["APPOINTMENTS_TABLE"])
     return _table
+
 
 def _get_audit():
     global _audit_tbl
     if _audit_tbl is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         _audit_tbl = db.Table(os.environ["AUDIT_LOGS_TABLE"])
     return _audit_tbl
 
+
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Content-Type": "application/json",
@@ -60,11 +63,11 @@ def _groups(claims):
 def _audit(user_id, action, resource_id):
     try:
         _get_audit().put_item(Item={
-            "log_id":    str(uuid.uuid4()),
+            "log_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id":   user_id,
-            "action":    action,
-            "resource":  resource_id,
+            "user_id": user_id,
+            "action": action,
+            "resource": resource_id,
             "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
         })
     except Exception as e:
@@ -72,9 +75,9 @@ def _audit(user_id, action, resource_id):
 
 
 def list_appointments(event, claims):
-    groups    = _groups(claims)
-    user_sub  = claims.get("sub", "")
-    params    = event.get("queryStringParameters") or {}
+    groups = _groups(claims)
+    user_sub = claims.get("sub", "")
+    params = event.get("queryStringParameters") or {}
 
     try:
         if "Patients" in groups:
@@ -104,27 +107,27 @@ def list_appointments(event, claims):
 
 def create_appointment(event, claims, body):
     required = ["patient_id", "doctor_id", "appointment_date", "reason"]
-    missing  = [f for f in required if not body.get(f)]
+    missing = [f for f in required if not body.get(f)]
     if missing:
         return _resp(400, {"error": f"Missing: {', '.join(missing)}"})
 
     appt_id = str(uuid.uuid4())
-    now     = datetime.now(timezone.utc).isoformat()
-    caller  = claims.get("email", "unknown")
+    now = datetime.now(timezone.utc).isoformat()
+    caller = claims.get("email", "unknown")
 
     item = {
-        "appointment_id":   appt_id,
+        "appointment_id": appt_id,
         "appointment_date": body["appointment_date"],
-        "patient_id":       body["patient_id"],
-        "doctor_id":        body["doctor_id"],
-        "reason":           body["reason"].strip(),
-        "notes":            body.get("notes", ""),
-        "status":           "PENDING",
-        "type":             body.get("type", "IN_PERSON"),
+        "patient_id": body["patient_id"],
+        "doctor_id": body["doctor_id"],
+        "reason": body["reason"].strip(),
+        "notes": body.get("notes", ""),
+        "status": "PENDING",
+        "type": body.get("type", "IN_PERSON"),
         "duration_minutes": body.get("duration_minutes", 30),
-        "created_by":       caller,
-        "created_at":       now,
-        "updated_at":       now,
+        "created_by": caller,
+        "created_at": now,
+        "updated_at": now,
     }
 
     try:
@@ -157,7 +160,7 @@ def update_appointment(event, claims, appt_id, body):
         return _resp(403, {"error": "Insufficient permissions"})
 
     updatable = ["appointment_date", "reason", "notes", "status", "type", "duration_minutes"]
-    updates   = {k: v for k, v in body.items() if k in updatable}
+    updates = {k: v for k, v in body.items() if k in updatable}
 
     if "status" in updates and updates["status"] not in VALID_STATUSES:
         return _resp(400, {"error": f"Invalid status. Valid: {', '.join(VALID_STATUSES)}"})
@@ -177,9 +180,9 @@ def update_appointment(event, claims, appt_id, body):
             return _resp(404, {"error": "Appointment not found"})
 
         item = items[0]
-        expr       = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+        expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
         attr_names = {f"#{k}": k for k in updates}
-        attr_vals  = {f":{k}": v for k, v in updates.items()}
+        attr_vals = {f":{k}": v for k, v in updates.items()}
 
         _get_table().update_item(
             Key={"appointment_id": appt_id, "appointment_date": item["appointment_date"]},
@@ -209,7 +212,7 @@ def cancel_appointment(event, claims, appt_id):
             UpdateExpression="SET #status = :s, updated_at = :ua",
             ExpressionAttributeNames={"#status": "status"},
             ExpressionAttributeValues={
-                ":s":  "CANCELLED",
+                ":s": "CANCELLED",
                 ":ua": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -226,8 +229,8 @@ def lambda_handler(event, context):
 
     claims = _claims(event)
     method = event.get("httpMethod", "")
-    path   = event.get("path", "")
-    parts  = path.strip("/").split("/")
+    path = event.get("path", "")
+    parts = path.strip("/").split("/")
     appt_id = parts[1] if len(parts) > 1 else None
 
     try:

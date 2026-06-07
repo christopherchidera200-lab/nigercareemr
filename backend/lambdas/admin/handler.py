@@ -21,33 +21,36 @@ logger.setLevel(logging.INFO)
 
 _cognito = None
 _patients_tbl = None
-_doctors_tbl  = None
-_appts_tbl    = None
-_audit_tbl    = None
+_doctors_tbl = None
+_appts_tbl = None
+_audit_tbl = None
+
 
 def _get_cognito():
     global _cognito
     if _cognito is None:
-        _cognito = boto3.client("cognito-idp", region_name=os.environ.get("REGION","us-east-1"))
+        _cognito = boto3.client("cognito-idp", region_name=os.environ.get("REGION", "us-east-1"))
     return _cognito
 
+
 def _get_db(attr, table_env):
-    import sys
     tbl = globals().get(attr)
     if tbl is None:
-        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION","us-east-1"))
+        db = boto3.resource("dynamodb", region_name=os.environ.get("REGION", "us-east-1"))
         tbl = db.Table(os.environ[table_env])
         globals()[attr] = tbl
     return tbl
 
+
 def _get_patients_tbl(): return _get_db("_patients_tbl", "PATIENTS_TABLE")
-def _get_doctors_tbl():  return _get_db("_doctors_tbl",  "DOCTORS_TABLE")
-def _get_appts_tbl():    return _get_db("_appts_tbl",    "APPOINTMENTS_TABLE")
-def _get_audit():        return _get_db("_audit_tbl",    "AUDIT_LOGS_TABLE")
-def _get_pool_id():      return os.environ["COGNITO_USER_POOL_ID"]
+def _get_doctors_tbl(): return _get_db("_doctors_tbl", "DOCTORS_TABLE")
+def _get_appts_tbl(): return _get_db("_appts_tbl", "APPOINTMENTS_TABLE")
+def _get_audit(): return _get_db("_audit_tbl", "AUDIT_LOGS_TABLE")
+def _get_pool_id(): return os.environ["COGNITO_USER_POOL_ID"]
+
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Content-Type": "application/json",
@@ -57,12 +60,15 @@ CORS_HEADERS = {
 def _resp(status, body):
     return {"statusCode": status, "headers": CORS_HEADERS, "body": json.dumps(body, default=str)}
 
+
 def _claims(event):
     return event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+
 
 def _groups(claims):
     g = claims.get("cognito:groups", "")
     return [g] if isinstance(g, str) else (g or [])
+
 
 def _require_admin(claims):
     return "Admins" in _groups(claims)
@@ -97,11 +103,11 @@ def get_stats(event, claims):
         )["Count"]
 
         return _resp(200, {
-            "active_patients":    patient_count,
-            "total_doctors":      doctor_count,
+            "active_patients": patient_count,
+            "total_doctors": doctor_count,
             "appointments_today": appt_today,
-            "pending_approvals":  pending_appts,
-            "generated_at":       datetime.now(timezone.utc).isoformat(),
+            "pending_approvals": pending_appts,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.error("get_stats error: %s", e)
@@ -113,18 +119,21 @@ def list_users(event, claims):
         return _resp(403, {"error": "Admin only"})
 
     try:
-        resp  = _get_cognito().list_users(UserPoolId=_get_pool_id(), Limit=60)
+        resp = _get_cognito().list_users(UserPoolId=_get_pool_id(), Limit=60)
         users = []
         for u in resp.get("Users", []):
             attrs = {a["Name"]: a["Value"] for a in u.get("Attributes", [])}
-            users.append({
-                "username":   u.get("Username"),
-                "email":      attrs.get("email", ""),
-                "name":       attrs.get("name", ""),
-                "role":       attrs.get("custom:role", ""),
-                "status":     u.get("UserStatus"),
-                "created_at": u.get("UserCreateDate", "").isoformat() if hasattr(u.get("UserCreateDate", ""), "isoformat") else str(u.get("UserCreateDate", "")),
-            })
+            users.append(
+                {
+                    "username": u.get("Username"), "email": attrs.get(
+                        "email", ""), "name": attrs.get(
+                        "name", ""), "role": attrs.get(
+                        "custom:role", ""), "status": u.get("UserStatus"), "created_at": u.get(
+                        "UserCreateDate", "").isoformat() if hasattr(
+                            u.get(
+                                "UserCreateDate", ""), "isoformat") else str(
+                                    u.get(
+                                        "UserCreateDate", "")), })
         return _resp(200, {"users": users, "count": len(users)})
     except Exception as e:
         logger.error("list_users error: %s", e)
@@ -147,11 +156,11 @@ def assign_role(event, claims, user_id, body):
             GroupName=group,
         )
         _get_audit().put_item(Item={
-            "log_id":    str(uuid.uuid4()),
+            "log_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id":   claims.get("email", "unknown"),
-            "action":    f"ASSIGN_ROLE_{group.upper()}",
-            "resource":  user_id,
+            "user_id": claims.get("email", "unknown"),
+            "action": f"ASSIGN_ROLE_{group.upper()}",
+            "resource": user_id,
             "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
         })
         return _resp(200, {"message": f"User assigned to {group}"})
@@ -166,8 +175,8 @@ def get_audit_logs(event, claims):
     if not _require_admin(claims):
         return _resp(403, {"error": "Admin only"})
 
-    params    = event.get("queryStringParameters") or {}
-    user_id   = params.get("user_id")
+    params = event.get("queryStringParameters") or {}
+    user_id = params.get("user_id")
 
     try:
         if user_id:
@@ -203,27 +212,27 @@ def create_doctor(event, claims, body):
         return _resp(403, {"error": "Admin only"})
 
     required = ["name", "specialty", "email", "phone", "license_number"]
-    missing  = [f for f in required if not body.get(f)]
+    missing = [f for f in required if not body.get(f)]
     if missing:
         return _resp(400, {"error": f"Missing: {', '.join(missing)}"})
 
     doctor_id = str(uuid.uuid4())
-    now       = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     item = {
-        "doctor_id":      doctor_id,
-        "record_type":    "PROFILE",
-        "name":           body["name"].strip(),
-        "specialty":      body["specialty"].strip(),
-        "email":          body["email"].strip().lower(),
-        "phone":          body["phone"].strip(),
+        "doctor_id": doctor_id,
+        "record_type": "PROFILE",
+        "name": body["name"].strip(),
+        "specialty": body["specialty"].strip(),
+        "email": body["email"].strip().lower(),
+        "phone": body["phone"].strip(),
         "license_number": body["license_number"].strip(),
         "qualifications": body.get("qualifications", []),
-        "availability":   body.get("availability", {}),
-        "status":         "ACTIVE",
-        "created_by":     claims.get("email", "unknown"),
-        "created_at":     now,
-        "updated_at":     now,
+        "availability": body.get("availability", {}),
+        "status": "ACTIVE",
+        "created_by": claims.get("email", "unknown"),
+        "created_at": now,
+        "updated_at": now,
     }
 
     try:
@@ -240,8 +249,8 @@ def lambda_handler(event, context):
 
     claims = _claims(event)
     method = event.get("httpMethod", "")
-    path   = event.get("path", "")
-    parts  = path.strip("/").split("/")
+    path = event.get("path", "")
+    parts = path.strip("/").split("/")
     # parts: ["admin", "stats"|"users"|"audit"|"doctors", optional_id, optional_sub]
 
     sub1 = parts[1] if len(parts) > 1 else ""

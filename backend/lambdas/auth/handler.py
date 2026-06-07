@@ -13,15 +13,16 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
     "Content-Type": "application/json",
 }
 
 # ── Lazy clients (initialised on first invocation, not at import) ────────────
-_cognito   = None
+_cognito = None
 _audit_tbl = None
+
 
 def _get_cognito():
     global _cognito
@@ -30,15 +31,17 @@ def _get_cognito():
                                 region_name=os.environ.get("REGION", "us-east-1"))
     return _cognito
 
+
 def _get_audit_table():
     global _audit_tbl
     if _audit_tbl is None:
-        dynamodb   = boto3.resource("dynamodb",
-                                    region_name=os.environ.get("REGION", "us-east-1"))
+        dynamodb = boto3.resource("dynamodb",
+                                  region_name=os.environ.get("REGION", "us-east-1"))
         _audit_tbl = dynamodb.Table(os.environ["AUDIT_LOGS_TABLE"])
     return _audit_tbl
 
-def _get_pool_id():  return os.environ["COGNITO_USER_POOL_ID"]
+
+def _get_pool_id(): return os.environ["COGNITO_USER_POOL_ID"]
 def _get_client_id(): return os.environ["COGNITO_CLIENT_ID"]
 
 
@@ -50,11 +53,11 @@ def _log_audit(action: str, user_id: str, details: dict = None):
     import uuid
     try:
         _get_audit_table().put_item(Item={
-            "log_id":    str(uuid.uuid4()),
+            "log_id": str(uuid.uuid4()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_id":   user_id,
-            "action":    action,
-            "details":   json.dumps(details or {}),
+            "user_id": user_id,
+            "action": action,
+            "details": json.dumps(details or {}),
             "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
         })
     except Exception as e:
@@ -62,7 +65,7 @@ def _log_audit(action: str, user_id: str, details: dict = None):
 
 
 def handle_login(body: dict) -> dict:
-    email    = body.get("email", "").strip().lower()
+    email = body.get("email", "").strip().lower()
     password = body.get("password", "")
     if not email or not password:
         return _resp(400, {"error": "email and password required"})
@@ -76,10 +79,10 @@ def handle_login(body: dict) -> dict:
         auth = resp.get("AuthenticationResult", {})
         _log_audit("LOGIN_SUCCESS", email)
         return _resp(200, {
-            "accessToken":  auth.get("AccessToken"),
-            "idToken":      auth.get("IdToken"),
+            "accessToken": auth.get("AccessToken"),
+            "idToken": auth.get("IdToken"),
             "refreshToken": auth.get("RefreshToken"),
-            "expiresIn":    auth.get("ExpiresIn", 3600),
+            "expiresIn": auth.get("ExpiresIn", 3600),
         })
     except cognito.exceptions.NotAuthorizedException:
         _log_audit("LOGIN_FAILED", email, {"reason": "invalid_credentials"})
@@ -95,10 +98,10 @@ def handle_login(body: dict) -> dict:
 
 
 def handle_register(body: dict) -> dict:
-    email    = body.get("email", "").strip().lower()
+    email = body.get("email", "").strip().lower()
     password = body.get("password", "")
-    name     = body.get("name", "").strip()
-    role     = body.get("role", "patients").lower()
+    name = body.get("name", "").strip()
+    role = body.get("role", "patients").lower()
     if role not in ("patients", "doctors"):
         role = "patients"
     if not email or not password or not name:
@@ -110,8 +113,8 @@ def handle_register(body: dict) -> dict:
             Username=email,
             Password=password,
             UserAttributes=[
-                {"Name": "email",       "Value": email},
-                {"Name": "name",        "Value": name},
+                {"Name": "email", "Value": email},
+                {"Name": "name", "Value": name},
                 {"Name": "custom:role", "Value": role},
             ],
         )
@@ -140,8 +143,8 @@ def handle_refresh(body: dict) -> dict:
         auth = resp.get("AuthenticationResult", {})
         return _resp(200, {
             "accessToken": auth.get("AccessToken"),
-            "idToken":     auth.get("IdToken"),
-            "expiresIn":   auth.get("ExpiresIn", 3600),
+            "idToken": auth.get("IdToken"),
+            "expiresIn": auth.get("ExpiresIn", 3600),
         })
     except cognito.exceptions.NotAuthorizedException:
         return _resp(401, {"error": "Refresh token expired or invalid"})
@@ -167,8 +170,8 @@ def handle_forgot_password(body: dict) -> dict:
 
 
 def handle_confirm_password(body: dict) -> dict:
-    email        = body.get("email", "").strip().lower()
-    code         = body.get("code", "")
+    email = body.get("email", "").strip().lower()
+    code = body.get("code", "")
     new_password = body.get("newPassword", "")
     if not email or not code or not new_password:
         return _resp(400, {"error": "email, code, and newPassword required"})
@@ -192,10 +195,10 @@ def handle_confirm_password(body: dict) -> dict:
 
 
 ROUTE_MAP = {
-    "POST /auth/login":            handle_login,
-    "POST /auth/register":         handle_register,
-    "POST /auth/refresh":          handle_refresh,
-    "POST /auth/forgot-password":  handle_forgot_password,
+    "POST /auth/login": handle_login,
+    "POST /auth/register": handle_register,
+    "POST /auth/refresh": handle_refresh,
+    "POST /auth/forgot-password": handle_forgot_password,
     "POST /auth/confirm-password": handle_confirm_password,
 }
 
@@ -204,8 +207,8 @@ def lambda_handler(event, context):
     if event.get("httpMethod") == "OPTIONS":
         return _resp(200, {})
     method = event.get("httpMethod", "")
-    path   = event.get("path", "").rstrip("/")
-    key    = f"{method} {path}"
+    path = event.get("path", "").rstrip("/")
+    key = f"{method} {path}"
     handler = ROUTE_MAP.get(key)
     if not handler:
         return _resp(404, {"error": f"Route {key} not found"})
