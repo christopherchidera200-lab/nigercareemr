@@ -24,13 +24,13 @@ terraform {
   # NOTE: For first-time deploy, comment out the backend block and run
   # terraform init locally, then uncomment after state bucket exists.
   # Using local state initially keeps cost at $0 (no S3 state bucket needed).
-  # backend "s3" {
-  #   bucket         = "nigercareemr-tfstate-dev"
-  #   key            = "dev/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "nigercareemr-tfstate-lock"
-  # }
+  backend "s3" {
+    bucket         = "nigercareemr-tfstate-873871686800"
+    key            = "dev/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "nigercareemr-tfstate-lock"
+  }
 }
 
 provider "aws" {
