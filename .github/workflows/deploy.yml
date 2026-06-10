@@ -130,7 +130,12 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
-        run: terraform init -input=false
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=nigercareemr-tfstate-873871686800" \
+            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=nigercareemr-tfstate-lock"
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_DIR }}
@@ -188,7 +193,12 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
-        run: terraform init -input=false
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=nigercareemr-tfstate-873871686800" \
+            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=nigercareemr-tfstate-lock"
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
