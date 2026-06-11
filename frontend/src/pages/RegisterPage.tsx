@@ -27,8 +27,8 @@ export default function RegisterPage() {
         name: form.name, email: form.email.toLowerCase(),
         password: form.password, role: form.role,
       });
-      toast.success('Registration successful! Check your email to verify your account.');
-      navigate('/login');
+      toast.success('Registration successful! Check your email for a 6-digit verification code.');
+      navigate('/confirm', { state: { email: form.email.toLowerCase() } });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })
         ?.response?.data?.error ?? 'Registration failed';

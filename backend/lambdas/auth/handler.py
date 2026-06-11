@@ -194,6 +194,52 @@ def handle_confirm_password(body: dict) -> dict:
         return _resp(500, {"error": "Password confirmation failed"})
 
 
+
+def handle_confirm(body: dict) -> dict:
+    email = body.get("email", "").strip().lower()
+    code  = body.get("code", "").strip()
+    if not email or not code:
+        return _resp(400, {"error": "email and code required"})
+    cognito = _get_cognito()
+    try:
+        cognito.confirm_sign_up(
+            ClientId=_get_client_id(),
+            Username=email,
+            ConfirmationCode=code,
+        )
+        _log_audit("EMAIL_CONFIRMED", email)
+        return _resp(200, {"message": "Email confirmed successfully. You can now log in."})
+    except cognito.exceptions.CodeMismatchException:
+        return _resp(400, {"error": "Invalid verification code"})
+    except cognito.exceptions.ExpiredCodeException:
+        return _resp(400, {"error": "Code has expired. Request a new one."})
+    except cognito.exceptions.NotAuthorizedException:
+        return _resp(400, {"error": "Account is already confirmed"})
+    except Exception as e:
+        logger.error("Confirm error: %s", e)
+        return _resp(500, {"error": "Confirmation failed"})
+
+
+def handle_resend_code(body: dict) -> dict:
+    email = body.get("email", "").strip().lower()
+    if not email:
+        return _resp(400, {"error": "email required"})
+    cognito = _get_cognito()
+    try:
+        cognito.resend_confirmation_code(
+            ClientId=_get_client_id(),
+            Username=email,
+        )
+        return _resp(200, {"message": "Verification code resent. Check your inbox and spam folder."})
+    except cognito.exceptions.UserNotFoundException:
+        return _resp(404, {"error": "No account found with this email"})
+    except cognito.exceptions.InvalidParameterException:
+        return _resp(400, {"error": "Account is already confirmed"})
+    except Exception as e:
+        logger.error("Resend code error: %s", e)
+        return _resp(500, {"error": "Failed to resend code"})
+
+
 ROUTE_MAP = {
     "POST /auth/login": handle_login,
     "POST /auth/register": handle_register,

@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth';
 // Auth pages
 import LoginPage    from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ConfirmPage  from './pages/ConfirmPage';
 
 // Portal pages
 import AdminDashboard   from './pages/admin/AdminDashboard';
@@ -44,6 +45,7 @@ export default function App() {
       {/* Public */}
       <Route path="/login"    element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/confirm"  element={<ConfirmPage />} />
       <Route path="/"         element={<RoleRouter />} />
 
       {/* Admin portal */}
