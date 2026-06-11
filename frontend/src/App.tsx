@@ -4,7 +4,9 @@ import { useAuth } from './hooks/useAuth';
 // Auth pages
 import LoginPage    from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import ConfirmPage  from './pages/ConfirmPage';
+import ConfirmPage        from './pages/ConfirmPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage  from './pages/ResetPasswordPage';
 
 // Portal pages
 import AdminDashboard   from './pages/admin/AdminDashboard';
@@ -45,7 +47,9 @@ export default function App() {
       {/* Public */}
       <Route path="/login"    element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/confirm"  element={<ConfirmPage />} />
+      <Route path="/confirm"         element={<ConfirmPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password"  element={<ResetPasswordPage />} />
       <Route path="/"         element={<RoleRouter />} />
 
       {/* Admin portal */}
