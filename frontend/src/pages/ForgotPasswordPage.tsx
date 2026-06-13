@@ -23,7 +23,11 @@ export default function ForgotPasswordPage() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })
         ?.response?.data?.error ?? 'Failed to send reset code';
-      toast.error(msg);
+      if (msg.includes('not confirmed')) {
+        toast.error(msg + ' Go to /confirm to verify your email first.');
+      } else {
+        toast.error(msg);
+      }
     } finally { setLoading(false); }
   }
 

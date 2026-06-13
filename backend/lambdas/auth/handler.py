@@ -41,8 +41,12 @@ def _get_audit_table():
     return _audit_tbl
 
 
-def _get_pool_id(): return os.environ["COGNITO_USER_POOL_ID"]
-def _get_client_id(): return os.environ["COGNITO_CLIENT_ID"]
+def _get_pool_id():
+    return os.environ["COGNITO_USER_POOL_ID"]
+
+
+def _get_client_id():
+    return os.environ["COGNITO_CLIENT_ID"]
 
 
 def _resp(status: int, body: dict) -> dict:
@@ -164,9 +168,15 @@ def handle_forgot_password(body: dict) -> dict:
         return _resp(200, {"message": "Password reset code sent to your email"})
     except cognito.exceptions.UserNotFoundException:
         return _resp(200, {"message": "If your email is registered, you will receive a reset code"})
+    except cognito.exceptions.InvalidParameterException:
+        return _resp(400, {"error": "Account not confirmed. Please confirm your email first before resetting password."})
+    except cognito.exceptions.LimitExceededException:
+        return _resp(429, {"error": "Too many attempts. Please wait a few minutes and try again."})
+    except cognito.exceptions.NotAuthorizedException:
+        return _resp(400, {"error": "Password reset is not allowed for this account."})
     except Exception as e:
         logger.error("Forgot password error: %s", e)
-        return _resp(500, {"error": "Password reset service unavailable"})
+        return _resp(500, {"error": f"Password reset failed: {str(e)}"})
 
 
 def handle_confirm_password(body: dict) -> dict:
