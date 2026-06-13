@@ -28,6 +28,11 @@ output "s3_bucket_name" {
   value       = module.s3.bucket_name
 }
 
+output "frontend_bucket_name" {
+  description = "S3 bucket name for frontend static website"
+  value       = module.s3.frontend_bucket_name
+}
+
 output "dynamodb_table_names" {
   description = "Map of DynamoDB table names"
   value       = module.dynamodb.table_names

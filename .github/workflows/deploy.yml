@@ -50,15 +50,16 @@ jobs:
           flake8 backend/ \
             --max-line-length=120 \
             --exclude=backend/tests/__pycache__ \
-           --ignore=E501,W503,E231,E221,E302,E303,E305,E401,W291,W293,E241,E704,E226,E251
+            --ignore=E501,W503
+
       - name: Run unit tests
         run: |
           cd backend
           python -m pytest tests/ -v \
             --tb=short \
             --cov=lambdas \
-            --cov-report=term-missing 
-      
+            --cov-report=term-missing \
+
 
   # ─────────────────────────────────────────────────────────────────────────
   # JOB 2: Frontend build
@@ -130,12 +131,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
-        run: |
-          terraform init -input=false \
-            -backend-config="bucket=nigercareemr-tfstate-873871686800" \
-            -backend-config="key=dev/terraform.tfstate" \
-            -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=nigercareemr-tfstate-lock"
+        run: terraform init -input=false
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_DIR }}
@@ -193,12 +189,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_DIR }}
-        run: |
-          terraform init -input=false \
-            -backend-config="bucket=nigercareemr-tfstate-873871686800" \
-            -backend-config="key=dev/terraform.tfstate" \
-            -backend-config="region=us-east-1" \
-            -backend-config="dynamodb_table=nigercareemr-tfstate-lock"
+        run: terraform init -input=false
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_DIR }}
@@ -209,7 +200,7 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: |
           echo "api_url=$(terraform output -raw api_gateway_url)"                  >> $GITHUB_OUTPUT
-          echo "frontend_bucket=$(terraform output -raw s3_bucket_name)"           >> $GITHUB_OUTPUT
+          echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)"     >> $GITHUB_OUTPUT
 
   # ─────────────────────────────────────────────────────────────────────────
   # JOB 5: Deploy frontend to S3 + CloudFront invalidation
