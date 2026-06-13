@@ -241,11 +241,13 @@ def handle_resend_code(body: dict) -> dict:
 
 
 ROUTE_MAP = {
-    "POST /auth/login": handle_login,
-    "POST /auth/register": handle_register,
-    "POST /auth/refresh": handle_refresh,
-    "POST /auth/forgot-password": handle_forgot_password,
+    "POST /auth/login":            handle_login,
+    "POST /auth/register":         handle_register,
+    "POST /auth/refresh":          handle_refresh,
+    "POST /auth/forgot-password":  handle_forgot_password,
     "POST /auth/confirm-password": handle_confirm_password,
+    "POST /auth/confirm":          handle_confirm,
+    "POST /auth/resend-code":      handle_resend_code,
 }
 
 
