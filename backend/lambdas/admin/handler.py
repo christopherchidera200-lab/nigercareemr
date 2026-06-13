@@ -243,6 +243,32 @@ def create_doctor(event, claims, body):
         return _resp(500, {"error": "Failed to create doctor profile"})
 
 
+def delete_user(event, claims, username):
+    if not _require_admin(claims):
+        return _resp(403, {"error": "Admin only"})
+    if not username:
+        return _resp(400, {"error": "username required"})
+    try:
+        _get_cognito().admin_delete_user(
+            UserPoolId=_get_pool_id(),
+            Username=username,
+        )
+        _get_audit().put_item(Item={
+            "log_id": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "user_id": claims.get("email", "unknown"),
+            "action": "DELETE_USER",
+            "resource": username,
+            "expires_at": int(datetime.now(timezone.utc).timestamp()) + 7776000,
+        })
+        return _resp(200, {"message": f"User {username} deleted"})
+    except _get_cognito().exceptions.UserNotFoundException:
+        return _resp(404, {"error": "User not found"})
+    except Exception as e:
+        logger.error("delete_user error: %s", e)
+        return _resp(500, {"error": "Failed to delete user"})
+
+
 def lambda_handler(event, context):
     if event.get("httpMethod") == "OPTIONS":
         return _resp(200, {})
@@ -274,5 +300,7 @@ def lambda_handler(event, context):
         return list_doctors(event, claims)
     elif method == "POST" and sub1 == "doctors":
         return create_doctor(event, claims, body)
+    elif method == "DELETE" and sub1 == "users" and sub2:
+        return delete_user(event, claims, sub2)
     else:
         return _resp(404, {"error": "Route not found"})

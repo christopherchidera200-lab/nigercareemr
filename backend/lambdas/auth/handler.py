@@ -194,10 +194,9 @@ def handle_confirm_password(body: dict) -> dict:
         return _resp(500, {"error": "Password confirmation failed"})
 
 
-
 def handle_confirm(body: dict) -> dict:
     email = body.get("email", "").strip().lower()
-    code  = body.get("code", "").strip()
+    code = body.get("code", "").strip()
     if not email or not code:
         return _resp(400, {"error": "email and code required"})
     cognito = _get_cognito()
@@ -241,13 +240,13 @@ def handle_resend_code(body: dict) -> dict:
 
 
 ROUTE_MAP = {
-    "POST /auth/login":            handle_login,
-    "POST /auth/register":         handle_register,
-    "POST /auth/refresh":          handle_refresh,
-    "POST /auth/forgot-password":  handle_forgot_password,
+    "POST /auth/login": handle_login,
+    "POST /auth/register": handle_register,
+    "POST /auth/refresh": handle_refresh,
+    "POST /auth/forgot-password": handle_forgot_password,
     "POST /auth/confirm-password": handle_confirm_password,
-    "POST /auth/confirm":          handle_confirm,
-    "POST /auth/resend-code":      handle_resend_code,
+    "POST /auth/confirm": handle_confirm,
+    "POST /auth/resend-code": handle_resend_code,
 }
 
 
